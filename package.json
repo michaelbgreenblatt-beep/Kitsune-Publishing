@@ -1,0 +1,12 @@
+{
+  "name": "kitsune-publishing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kitsune Law Content Studio — a real, browser-persistent tool for planning, review-gating, publishing, and tracking legal content across platforms.",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build-standalone.mjs"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kitsune Content Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Content Studio wears the firm's paper-and-ink system, but indigo where
+       Mnemos wears vermilion — related tools, distinct front doors. */
+    :root { --accent: #46557f; --accent-hover: #364265; --accent-soft: rgba(70,85,127,0.08); }
+    @media (prefers-color-scheme: dark) { :root { --accent: #8d9cc4; --accent-hover: #a3b0d3; --accent-soft: rgba(141,156,196,0.12); } }
+    :root[data-theme="light"] { --accent: #46557f; --accent-hover: #364265; --accent-soft: rgba(70,85,127,0.08); }
+    :root[data-theme="dark"] { --accent: #8d9cc4; --accent-hover: #a3b0d3; --accent-soft: rgba(141,156,196,0.12); }
+    .fld { display: block; margin-bottom: 12px; }
+    .fld > span { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 5px; }
+    .fld input, .fld select, .fld textarea {
+      width: 100%; font: inherit; font-size: 13px; padding: 8px 11px; border-radius: 3px;
+      border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1);
+    }
+    .fld textarea { font-family: var(--serif); line-height: 1.55; resize: vertical; }
+    .fld input:focus, .fld select:focus, .fld textarea:focus { outline: none; border-color: var(--ink-2); }
+    .fld-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 560px) { .fld-row { grid-template-columns: 1fr; } }
+    /* content calendar */
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-head { margin-bottom: 4px; }
+    .cal-dow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); text-align: center; padding: 2px 0; }
+    .cal-cell { min-height: 92px; border: 1px solid var(--line); border-radius: 3px; padding: 5px; background: var(--surface); display: flex; flex-direction: column; gap: 3px; }
+    .cal-cell.empty-cell { background: transparent; border-color: transparent; }
+    .cal-cell.today { border-color: var(--accent); }
+    .cal-date { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .cal-cell.today .cal-date { color: var(--accent); font-weight: 700; }
+    .cal-chip { display: block; font-size: 10.5px; line-height: 1.25; padding: 2px 5px; border-radius: 2px; text-decoration: none; border: 1px solid var(--accent); color: var(--accent); background: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cal-chip.done { background: var(--accent); color: #fff; }
+    .cal-chip.commentary { border-color: var(--warning-dot); color: var(--warning); }
+    .cal-chip.commentary.done { background: var(--warning-dot); color: #1d1c18; }
+    .cal-chip:hover { text-decoration: none; opacity: 0.85; }
+    @media (max-width: 640px) { .cal-cell { min-height: 64px; } .cal-chip { font-size: 9px; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Content Studio</span>
+      <span class="brand-tag">Kitsune Law · Publishing</span>
+    </div>
+    <nav class="tabs" id="nav">
+      <a href="#/" data-route="pipeline">Pipeline</a>
+      <a href="#/radar" data-route="radar">Radar</a>
+      <a href="#/strategy" data-route="strategy">Strategy</a>
+      <a href="#/calendar" data-route="calendar">Calendar</a>
+      <a href="#/library" data-route="library">Library</a>
+      <a href="#/settings" data-route="settings">Settings</a>
+    </nav>
+  </header>
+
+  <main id="view" class="view"></main>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
