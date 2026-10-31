@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel><title>Example Register</title></channel>
+<item>
+  <title>[TEST] Request for comment: AI risk management guidance</title>
+  <link>https://register.example.gov/documents/2026/10/26/ai-guidance</link>
+  <dc:date>2026-10-26T00:00:00-04:00</dc:date>
+  <description>Agency seeks comment; comment period closes in 60 days.</description>
+</item>
+</rdf:RDF>

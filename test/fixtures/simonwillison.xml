@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Example Weblog</title><id>https://blog.example.org/</id>
+<entry>
+  <title>[TEST] Notes on enterprise agents adoption</title>
+  <link href="https://blog.example.org/2026/Oct/30/agents/#atom-everything" rel="alternate"/>
+  <link href="https://blog.example.org/2026/Oct/30/agents/comments" rel="replies"/>
+  <id>https://blog.example.org/2026/Oct/30/agents/</id>
+  <published>2026-10-30T20:00:00+00:00</published>
+  <updated>2026-10-30T21:00:00+00:00</updated>
+  <summary type="html">&lt;p&gt;How enterprise teams are adopting agents.&lt;/p&gt;</summary>
+  <author><name>Test Writer</name></author>
+</entry>
+<entry>
+  <title>[TEST] My sourdough starter</title>
+  <link href="https://blog.example.org/2026/Oct/29/bread/"/>
+  <id>https://blog.example.org/2026/Oct/29/bread/</id>
+  <published>2026-10-29T08:00:00Z</published>
+  <summary>Unrelated.</summary>
+</entry>
+<entry>
+  <title>[TEST] Enterprise adoption survey from last spring</title>
+  <link href="https://blog.example.org/2026/Apr/01/old/"/>
+  <id>https://blog.example.org/2026/Apr/01/old/</id>
+  <published>2026-04-01T08:00:00Z</published>
+  <summary>Too old for the window.</summary>
+</entry>
+</feed>

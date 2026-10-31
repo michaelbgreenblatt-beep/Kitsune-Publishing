@@ -1,0 +1,57 @@
+{
+  "$comment": "Feeds the daily fetch pulls into the Radar inbox. Edit freely: track is one of regulatory | legal_ai | frontier_model | ai_trend; filter:true drops items with no keyword match (use for broad sources); max caps items per feed. Each run records per-feed health in public/feed.json, and the Radar shows it, so a dead URL is visible rather than silent.",
+  "windowDays": 30,
+  "maxPerFeed": 25,
+  "maxItems": 300,
+  "feeds": [
+    { "id": "fr-ai", "track": "regulatory", "label": "Federal Register — AI documents", "url": "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bterm%5D=%22artificial+intelligence%22&order=newest" },
+    { "id": "gn-ai-rules", "track": "regulatory", "label": "Google News — AI regulation & rulemaking", "filter": true, "url": "https://news.google.com/rss/search?q=(%22artificial+intelligence%22+OR+AI)+(regulation+OR+rulemaking+OR+%22executive+order%22+OR+legislature+OR+%22attorney+general%22)+when:7d&hl=en-US&gl=US&ceid=US:en" },
+    { "id": "gn-ai-enforcement", "track": "regulatory", "label": "Google News — AI enforcement & litigation", "filter": true, "url": "https://news.google.com/rss/search?q=(%22artificial+intelligence%22+OR+AI)+(SEC+OR+FTC+OR+lawsuit+OR+settlement+OR+enforcement)+when:7d&hl=en-US&gl=US&ceid=US:en" },
+
+    { "id": "artificial-lawyer", "track": "legal_ai", "label": "Artificial Lawyer", "url": "https://www.artificiallawyer.com/feed/" },
+    { "id": "lawnext", "track": "legal_ai", "label": "LawSites / LawNext", "url": "https://www.lawnext.com/feed" },
+    { "id": "gn-legal-ai", "track": "legal_ai", "label": "Google News — legal AI", "url": "https://news.google.com/rss/search?q=(%22legal+AI%22+OR+%22legal+tech%22+OR+%22AI+for+lawyers%22)+when:7d&hl=en-US&gl=US&ceid=US:en" },
+
+    { "id": "gn-frontier", "track": "frontier_model", "label": "Google News — frontier lab releases", "url": "https://news.google.com/rss/search?q=(Anthropic+OR+OpenAI+OR+%22Google+DeepMind%22+OR+%22Meta+AI%22+OR+Mistral)+(model+OR+release+OR+launches)+when:7d&hl=en-US&gl=US&ceid=US:en" },
+    { "id": "openai", "track": "frontier_model", "label": "OpenAI — news", "url": "https://openai.com/news/rss.xml" },
+    { "id": "deepmind", "track": "frontier_model", "label": "Google DeepMind — blog", "url": "https://deepmind.google/blog/rss.xml" },
+    { "id": "importai", "track": "frontier_model", "label": "Import AI (Jack Clark)", "url": "https://importai.substack.com/feed" },
+    { "id": "huggingface", "track": "frontier_model", "label": "Hugging Face — blog", "filter": true, "max": 10, "url": "https://huggingface.co/blog/feed.xml" },
+
+    { "id": "gn-ai-adoption", "track": "ai_trend", "label": "Google News — enterprise AI adoption & governance", "url": "https://news.google.com/rss/search?q=(%22AI+governance%22+OR+%22enterprise+AI%22+OR+%22AI+adoption%22)+when:7d&hl=en-US&gl=US&ceid=US:en" },
+    { "id": "oneusefulthing", "track": "ai_trend", "label": "One Useful Thing (Ethan Mollick)", "url": "https://www.oneusefulthing.org/feed" },
+    { "id": "stratechery", "track": "ai_trend", "label": "Stratechery (Ben Thompson)", "filter": true, "url": "https://stratechery.com/feed/" },
+    { "id": "simonwillison", "track": "ai_trend", "label": "Simon Willison", "filter": true, "max": 15, "url": "https://simonwillison.net/atom/everything/" }
+  ],
+  "keywords": {
+    "client": [
+      "startup", "startups", "founder", "founders", "small business", "general counsel", "in-house",
+      "compliance", "liability", "lawsuit", "litigation", "regulation", "regulatory", "enforcement",
+      "privacy", "copyright", "contract", "contracts", "employment", "disclosure", "governance", "risk"
+    ],
+    "regulatory": [
+      ["rulemaking", 3], ["proposed rule", 3], ["final rule", 3], ["executive order", 3], ["AI Act", 3],
+      ["attorney general", 2], ["SEC", 3], ["FTC", 3], ["CFPB", 2], ["EEOC", 2], ["DOJ", 2], ["NIST", 2],
+      ["legislation", 2], ["bill", 1], ["statute", 2], ["guidance", 1], ["state law", 2], ["preemption", 2], ["moratorium", 2],
+      ["Colorado", 1], ["California", 1], ["New York", 1], ["Illinois", 1], ["Texas", 1], ["Delaware", 1],
+      ["comment period", 2], ["deadline", 1], ["court", 1], ["ruling", 2], ["settlement", 2], ["fine", 1], ["penalty", 1]
+    ],
+    "legal_ai": [
+      ["legal AI", 3], ["legal tech", 2], ["legaltech", 2], ["law firm", 2], ["law firms", 2], ["lawyers", 1], ["attorneys", 1],
+      ["legal ops", 2], ["contract review", 2], ["e-discovery", 2], ["Harvey", 2], ["Legora", 2], ["CoCounsel", 2],
+      ["Thomson Reuters", 1], ["LexisNexis", 1], ["Clio", 1], ["raises", 1], ["funding", 1], ["acquisition", 1],
+      ["bar", 1], ["ethics", 2], ["UPL", 3], ["malpractice", 2], ["hallucination", 2], ["hallucinations", 2], ["sanctions", 2]
+    ],
+    "frontier_model": [
+      ["release", 2], ["releases", 2], ["launch", 2], ["launches", 2], ["model", 1], ["models", 1],
+      ["GPT", 2], ["Claude", 2], ["Gemini", 2], ["Llama", 2], ["open-weight", 2], ["open-source", 1], ["open source", 1],
+      ["reasoning", 1], ["agent", 2], ["agents", 2], ["agentic", 2], ["benchmark", 1], ["safety", 2], ["alignment", 1],
+      ["frontier", 2], ["API", 1], ["pricing", 1], ["context window", 1], ["multimodal", 1]
+    ],
+    "ai_trend": [
+      ["adoption", 2], ["enterprise", 2], ["AI governance", 3], ["productivity", 1], ["workforce", 1], ["jobs", 1],
+      ["pricing", 1], ["revenue", 1], ["investment", 1], ["capex", 1], ["data center", 1], ["data centers", 1],
+      ["chips", 1], ["Nvidia", 1], ["energy", 1], ["agents", 2], ["automation", 1], ["survey", 1], ["study", 1]
+    ]
+  }
+}

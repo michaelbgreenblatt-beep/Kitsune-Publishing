@@ -1,0 +1,79 @@
+# Daily Radar refresh: fetch the feeds in feeds.config.json, commit the new
+# public/feed.json snapshot, and attach a freshly built standalone.
+#
+# Optional: set the repository variable DEPLOY_PAGES=true (Settings → Secrets
+# and variables → Actions → Variables) and enable Pages with source "GitHub
+# Actions" to also publish the app to GitHub Pages, where it reads the live
+# feed and so updates itself every day.
+
+name: Refresh Radar feeds
+
+on:
+  schedule:
+    - cron: '41 10 * * *' # daily at 10:41 UTC (early morning US Eastern)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-feeds
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test
+        run: npm test
+
+      # Exits 1 (and leaves the snapshot untouched) only if no feed at all
+      # could be read — individual failing feeds are recorded, not fatal.
+      - name: Fetch feeds
+        run: npm run feeds
+
+      - name: Commit refreshed snapshot
+        run: |
+          git add public/feed.json
+          if git diff --cached --quiet; then echo "Snapshot unchanged."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh Radar feed snapshot ($(date -u +%Y-%m-%d))"
+          git pull --rebase --autostash
+          git push
+
+      - name: Build standalone (with today's snapshot embedded)
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: content-studio-standalone
+          path: dist/content-studio-standalone.html
+          retention-days: 14
+
+      - name: Package site for Pages
+        if: vars.DEPLOY_PAGES == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  pages:
+    needs: refresh
+    if: vars.DEPLOY_PAGES == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

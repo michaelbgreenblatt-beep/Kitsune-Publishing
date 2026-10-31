@@ -8,9 +8,12 @@
  * persists in the browser's localStorage, so the single file is the whole app.
  * Theme tokens are duplicated as [data-theme] overrides so a host toggle beats
  * the OS preference either way.
+ *
+ * If public/feed.json exists, it's embedded as the Radar inbox's built-in
+ * snapshot (window.__KITSUNE_FEED__), since a hosted single file can't fetch it.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
@@ -19,6 +22,10 @@ const out = join(root, 'dist', 'content-studio-standalone.html');
 const css = readFileSync(join(root, 'public', 'styles.css'), 'utf8');
 const appJs = readFileSync(join(root, 'public', 'app.js'), 'utf8');
 const html = readFileSync(join(root, 'public', 'index.html'), 'utf8');
+const feedPath = join(root, 'public', 'feed.json');
+const feed = existsSync(feedPath) ? JSON.parse(readFileSync(feedPath, 'utf8')) : null;
+// Safe inside <script>: no "</script>" or "<!--" can survive escaping "<".
+const feedJs = feed ? `window.__KITSUNE_FEED__ = ${JSON.stringify(feed).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')};` : '';
 
 const title = html.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? 'Kitsune Content Studio';
 const inlineStyle = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
@@ -37,6 +44,7 @@ ${themeCss}
 ${inlineStyle}
 </style>
 ${body}
+${feedJs ? `<script>\n${feedJs}\n</script>` : ''}
 <script type="module">
 ${appJs}
 </script>
@@ -44,4 +52,4 @@ ${appJs}
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, doc);
-console.log(`Wrote dist/content-studio-standalone.html (${Math.round(doc.length / 1024)}kb)`);
+console.log(`Wrote dist/content-studio-standalone.html (${Math.round(doc.length / 1024)}kb${feed ? `, feed snapshot ${feed.generatedAt} · ${feed.items.length} items` : ', no feed snapshot'})`);

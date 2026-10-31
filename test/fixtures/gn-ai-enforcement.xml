@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>AI enforcement - Google News</title>
+<item>
+  <title>[TEST] State finalizes rulemaking on automated hiring tools - Example Gazette</title>
+  <link>https://www.news.example.com/articles/hiring-rule/?utm_campaign=x</link>
+  <pubDate>Fri, 30 Oct 2026 14:05:00 GMT</pubDate>
+  <description>Same story, different feed.</description>
+  <source url="https://news.example.com">Example Gazette</source>
+</item>
+<item>
+  <title>[TEST] FTC settles with startup over inflated AI claims - Example Wire</title>
+  <link>https://wire.example.org/ftc-ai-claims</link>
+  <pubDate>Thu, 29 Oct 2026 18:30:00 GMT</pubDate>
+  <description>A settlement over disclosure of AI capabilities.</description>
+  <source url="https://wire.example.org">Example Wire</source>
+</item>
+</channel></rss>

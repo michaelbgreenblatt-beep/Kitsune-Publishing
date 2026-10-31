@@ -14,6 +14,11 @@
  *
  * Legal-review gate preserved: nothing is marked Published without a named
  * reviewer of record — but the reviewer is whoever YOU name, not a fake.
+ *
+ * Radar inbox: real items from real news feeds (fetched daily by
+ * scripts/fetch-feeds.mjs into feed.json) to triage — watch, draft a
+ * commentary, or dismiss. Items keep their source links; nothing is
+ * summarized or invented here.
  */
 
 // ---------------------------------------------------------------------------
@@ -105,12 +110,13 @@ const OLD_SOURCE_LABELS = new Set([
 
 function freshState() {
   return {
-    version: 4,
+    version: 5,
     settings: { firmName: 'Kitsune Law', authorName: '', defaultReviewer: '' },
     pieces: [],
     developments: starterDevelopments(),
     sources: starterSources(),
     strategyNotes: '',
+    feedTriage: {}, // feed item id → { status: watched|drafted|dismissed, at, devId?, pieceId? }
     initialized: true,
   };
 }
@@ -130,7 +136,8 @@ function migrate(s) {
   } else {
     for (const x of s.sources) if (!x.track) x.track = 'general';
   }
-  s.version = 4;
+  if (!s.feedTriage || typeof s.feedTriage !== 'object') s.feedTriage = {};
+  s.version = 5;
   return s;
 }
 
@@ -273,6 +280,17 @@ function newPiece(type, opts = {}) {
   return piece;
 }
 
+/** Spin a commentary off a development; cites the source at the top of the draft. */
+function draftCommentaryFrom(d, sourceNote = '') {
+  const p = newPiece('commentary', { audience: d.audience, topic: d.category, track: d.track || 'regulatory', sourceDevelopmentId: d.id });
+  p.title = d.title ? `On: ${d.title}` : '';
+  p.angle = `What this means for ${AUDIENCE_LABEL[d.audience] || 'clients'}`;
+  const cite = sourceNote || (d.sourceUrl ? `SOURCE — ${d.title}\n${d.sourceUrl}` : '');
+  if (cite) p.body = `${cite}\n\n${p.body}`;
+  d.relatedPieceId = p.id; d.status = 'commented'; save();
+  return p;
+}
+
 function advance(piece, to) {
   if (to === 'approved' && !piece.reviewer.trim()) { toast('Name a reviewer of record before approving.', true); return false; }
   if (to === 'published') {
@@ -408,6 +426,164 @@ function channelRow(p, c, i) {
   </div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Radar inbox — real items from real feeds, triaged by you
+// ---------------------------------------------------------------------------
+//
+// The snapshot (feed.json) is produced by scripts/fetch-feeds.mjs, normally on a
+// daily schedule. The app takes the newest of: the live file next to the page
+// (dev server / GitHub Pages), a snapshot embedded at build time (standalone
+// artifact), or a feed file you loaded in Settings. Triage decisions live in
+// state.feedTriage, so they're part of your backup and survive refreshes.
+
+const FEED_KEY = 'kitsune.content.feed';
+let feed = null;
+let inboxTrack = 'all';
+let inboxShowTriaged = false;
+let inboxLimit = 30;
+let inboxHealthOpen = false;
+
+const FEED_ORIGIN_LABEL = { live: 'live feed', embedded: 'snapshot built into this page', file: 'feed file you loaded' };
+
+function validFeed(f) { return !!f && typeof f === 'object' && Array.isArray(f.items) && Array.isArray(f.feeds); }
+function newestFeed(...cands) {
+  return cands.filter(validFeed).sort((a, b) => String(b.generatedAt || '').localeCompare(String(a.generatedAt || '')))[0] || null;
+}
+function storedFeed() {
+  try { const raw = localStorage.getItem(FEED_KEY); return raw ? { ...JSON.parse(raw), origin: 'file' } : null; } catch { return null; }
+}
+
+async function initFeed() {
+  const embedded = validFeed(window.__KITSUNE_FEED__) ? { ...window.__KITSUNE_FEED__, origin: 'embedded' } : null;
+  feed = newestFeed(embedded, storedFeed());
+  try {
+    const res = await fetch('feed.json', { cache: 'no-store' });
+    const live = res.ok ? await res.json() : null;
+    if (validFeed(live)) feed = newestFeed(feed, { ...live, origin: 'live' });
+  } catch { /* no live file here (artifact / file://) — fine */ }
+  updateRadarPill();
+  if ((location.hash || '').startsWith('#/radar')) renderRadar();
+}
+
+const triageOf = (id) => state.feedTriage[id]?.status || null;
+const isFresh = (it) => !!feed && Date.parse(it.firstSeen || it.published || 0) >= Date.parse(feed.generatedAt || 0) - 36 * 36e5;
+
+function updateRadarPill() {
+  const pill = document.getElementById('radar-pill');
+  if (!pill) return;
+  const n = feed ? feed.items.filter((it) => !triageOf(it.id) && isFresh(it)).length : 0;
+  pill.textContent = n ? (n > 99 ? '99+' : String(n)) : '';
+  pill.title = n ? `${n} new in the Radar inbox` : '';
+}
+
+function feedItem(id) { return feed?.items.find((x) => x.id === id) || null; }
+
+/** Watch (or draft from) a feed item: it becomes a development with its real source. */
+function developmentFromItem(it) {
+  const d = {
+    id: uid('dev'), track: it.track, category: it.origin || it.source, title: it.title,
+    audience: AUDIENCE_LABEL[it.audience] ? it.audience : 'both', whyItMatters: '', sourceUrl: it.link,
+    status: 'watching', noticedAt: it.published || nowISO(), relatedPieceId: null, feedItemId: it.id,
+  };
+  state.developments.unshift(d);
+  return d;
+}
+
+function triage(id, action) {
+  const it = feedItem(id);
+  if (!it) return;
+  if (action === 'dismiss') { state.feedTriage[id] = { status: 'dismissed', at: nowISO() }; save(); updateRadarPill(); renderRadar(); return; }
+  if (action === 'restore') { delete state.feedTriage[id]; save(); updateRadarPill(); renderRadar(); return; }
+  const d = developmentFromItem(it);
+  if (action === 'watch') {
+    state.feedTriage[id] = { status: 'watched', at: nowISO(), devId: d.id };
+    save(); updateRadarPill(); renderRadar();
+    toast(`Watching under ${TRACK_LABEL[it.track]}. Add why it matters when you're ready.`);
+    return;
+  }
+  const from = [it.origin, it.source].filter(Boolean).join(' via ');
+  const note = `SOURCE — ${it.title}\n${it.link}\n(${from}${it.published ? `, ${day(it.published)}` : ''})`;
+  const p = draftCommentaryFrom(d, note);
+  state.feedTriage[id] = { status: 'drafted', at: nowISO(), devId: d.id, pieceId: p.id };
+  save(); updateRadarPill();
+  location.hash = `#/piece/${p.id}`;
+}
+
+function stamp(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+}
+
+function inboxRow(it) {
+  const t = state.feedTriage[it.id];
+  const fresh = !t && isFresh(it);
+  const status = t ? { watched: 'Watching', drafted: 'Drafted', dismissed: 'Dismissed' }[t.status] : '';
+  const actions = t
+    ? `${t.pieceId && getPiece(t.pieceId) ? `<a class="btn" href="#/piece/${esc(t.pieceId)}" style="font-size:11px;padding:4px 10px">Open draft</a>` : ''}
+       ${statusChip(t.status === 'dismissed' ? 'warning' : 'good', status)}
+       <button class="btn" data-inbox="restore" data-id="${esc(it.id)}" style="font-size:11px;padding:4px 10px">${t.status === 'dismissed' ? 'Restore' : 'Back to inbox'}</button>`
+    : `<button class="btn" data-inbox="watch" data-id="${esc(it.id)}" style="font-size:11px;padding:4px 10px">Watch</button>
+       <button class="btn primary" data-inbox="draft" data-id="${esc(it.id)}" style="font-size:11px;padding:4px 10px">Draft commentary →</button>
+       <button class="btn" data-inbox="dismiss" data-id="${esc(it.id)}" style="font-size:11px;padding:4px 10px" title="Not relevant — hide it">Dismiss</button>`;
+  return `<div class="inbox-row${t ? ' triaged' : ''}" data-item="${esc(it.id)}">
+    <div class="inbox-meta">
+      ${fresh ? '<span class="inbox-new">new</span>' : ''}
+      <span class="num">${esc(day(it.published || it.firstSeen))}</span>
+      <span>·</span>
+      ${it.origin ? `<span><strong>${esc(it.origin)}</strong> <span class="inbox-via">via ${esc(it.source)}</span></span>` : `<strong>${esc(it.source)}</strong>`}
+      ${inboxTrack === 'all' ? `<span>·</span><span>${esc(TRACK_LABEL[it.track] || it.track)}</span>` : ''}
+      ${it.stale ? '<span class="inbox-via" title="This source failed on the last refresh; the item is from an earlier run.">· from an earlier refresh</span>' : ''}
+    </div>
+    <a class="inbox-title" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">${esc(it.title)} <span aria-hidden="true">↗</span></a>
+    ${it.summary ? `<p class="inbox-sum">${esc(it.summary)}</p>` : ''}
+    <div class="inbox-foot">
+      <span class="badges">
+        ${(it.matched || []).length ? `<span class="inbox-why" title="Keywords that matched — why this surfaced">matched</span>${it.matched.slice(0, 5).map((m) => `<span class="badge">${esc(m)}</span>`).join('')}` : ''}
+        ${(it.alsoIn || []).length ? `<span class="inbox-via" title="${esc(it.alsoIn.join(', '))}">also in ${it.alsoIn.length} other source${it.alsoIn.length > 1 ? 's' : ''}</span>` : ''}
+      </span>
+      <span class="inbox-actions">${actions}</span>
+    </div>
+  </div>`;
+}
+
+function inboxHTML() {
+  if (!feed) {
+    return `<div class="section-title">Incoming</div>
+      <div class="card">
+        <p class="empty" style="padding:0 0 6px">No feed loaded yet.</p>
+        <p class="locked-note">This inbox fills from real news feeds — the Federal Register, Artificial Lawyer, LawSites, frontier-lab blogs, AI-policy news and more (edit the list in <code>feeds.config.json</code>). A scheduled job refreshes them daily; you can also run <code>npm run feeds</code> on your machine, or load a <code>feed.json</code> in <a href="#/settings">Settings</a>.</p>
+      </div>`;
+  }
+  const open = feed.items.filter((it) => !triageOf(it.id));
+  const countFor = (tk) => open.filter((it) => tk === 'all' || it.track === tk).length;
+  const visible = feed.items.filter((it) => (inboxTrack === 'all' || it.track === inboxTrack) && (inboxShowTriaged || !triageOf(it.id)));
+  const okFeeds = feed.feeds.filter((f) => f.ok);
+  const failing = feed.feeds.filter((f) => !f.ok);
+  const freshN = open.filter(isFresh).length;
+  const tabs = ['all', ...TRACKS].map((tk) => `<button class="chip-btn${inboxTrack === tk ? ' active' : ''}" data-inbox-track="${tk}">${esc(tk === 'all' ? 'All' : TRACK_LABEL[tk])} <span class="num">${countFor(tk)}</span></button>`).join('');
+
+  return `<div class="section-title">Incoming${freshN ? ` <span class="pill" style="top:0">${freshN} new</span>` : ''}</div>
+    <p class="locked-note" style="margin:-8px 0 10px">Real items from your feeds, newest first. Open the source, then <strong>Watch</strong> it, <strong>Draft commentary</strong> straight from it (the source is cited at the top of the draft), or <strong>Dismiss</strong> it. "Matched" shows the keywords that surfaced it.</p>
+    <div class="card" style="padding:14px 18px">
+      <div class="row-between" style="align-items:center;margin-bottom:10px">
+        <span class="locked-note">Updated <span class="num">${esc(stamp(feed.generatedAt))}</span> · ${okFeeds.length} of ${feed.feeds.length} sources OK · ${esc(FEED_ORIGIN_LABEL[feed.origin] || 'feed')}</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <label class="locked-note" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="inbox-triaged"${inboxShowTriaged ? ' checked' : ''}/> show triaged</label>
+          <button class="btn" data-inbox-health style="font-size:11px;padding:4px 10px">${inboxHealthOpen ? 'Hide' : 'Source'} health${failing.length ? ` · ${failing.length} failing` : ''}</button>
+        </span>
+      </div>
+      ${inboxHealthOpen ? `<div class="inbox-health">${feed.feeds.map((f) => `<div class="row-between" style="padding:4px 0;border-bottom:1px solid var(--line)">
+          <span style="font-size:12px">${statusChip(f.ok ? 'good' : 'critical', f.ok ? 'ok' : 'failing')} <strong style="margin-left:6px">${esc(f.label)}</strong> <span class="inbox-via">${esc(TRACK_LABEL[f.track] || f.track)}</span></span>
+          <span class="locked-note" style="font-size:11.5px">${f.ok ? `${f.items} kept` : esc(f.error || 'error')}</span>
+        </div>`).join('')}<p class="locked-note" style="margin-top:8px">Fix or swap a failing source in <code>feeds.config.json</code>; the next refresh picks it up.</p></div>` : ''}
+      <div class="chip-row">${tabs}</div>
+      ${visible.length
+        ? visible.slice(0, inboxLimit).map(inboxRow).join('') + (visible.length > inboxLimit ? `<div style="text-align:center;padding-top:10px"><button class="btn" data-inbox-more>Show more (${visible.length - inboxLimit})</button></div>` : '')
+        : `<p class="empty">${open.length ? 'Nothing open in this track.' : 'Inbox zero — everything has been triaged.'}</p>`}
+    </div>`;
+}
+
 function renderRadar() {
   const watching = state.developments.filter((d) => d.status === 'watching');
   const commented = state.developments.filter((d) => d.status === 'commented');
@@ -422,7 +598,12 @@ function renderRadar() {
 
   $view.innerHTML = `
     <h1>Radar</h1>
-    <p class="subhead">Developments worth commenting on — across law and regulation, the Legal AI market, frontier-model releases, and AI trends. This is your thought-leadership engine: watch a category, log a real development (with its source), then spin up a commentary. These are editable starting points, not fixed.</p>
+    <p class="subhead">Developments worth commenting on — across law and regulation, the Legal AI market, frontier-model releases, and AI trends. New items arrive in the inbox from your feeds; what you choose to watch lands in the watchlist below, ready to become a commentary.</p>
+
+    ${inboxHTML()}
+
+    <div class="section-title" style="margin-top:44px">Watchlist</div>
+    <p class="locked-note" style="margin:-8px 0 4px">Categories and specific developments you're tracking, by track. Add your own, or promote items from the inbox.</p>
 
     ${trackSections}
 
@@ -458,7 +639,10 @@ function devCard(d) {
     </div>
     <input type="text" data-df="title" value="${esc(d.title)}" placeholder="Development / category" style="width:100%;font-weight:600;font-size:13.5px;margin:8px 0 4px;border:none;background:transparent;color:var(--ink-1);font-family:var(--serif)" />
     <textarea data-df="whyItMatters" rows="2" placeholder="Why it matters for your clients" style="width:100%;font-size:12.5px;color:var(--ink-2);border:none;background:transparent;resize:vertical">${esc(d.whyItMatters)}</textarea>
-    <input type="text" data-df="sourceUrl" value="${esc(d.sourceUrl)}" placeholder="Source link (once you spot a real development)" style="width:100%;font-size:11.5px;margin-top:6px;padding:5px 8px;border-radius:3px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-1)" />
+    <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+      <input type="text" data-df="sourceUrl" value="${esc(d.sourceUrl)}" placeholder="Source link (once you spot a real development)" style="flex:1;font-size:11.5px;padding:5px 8px;border-radius:3px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-1)" />
+      ${/^https?:\/\//i.test(d.sourceUrl || '') ? `<a href="${esc(d.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;flex:0 0 auto">source ↗</a>` : ''}
+    </div>
     <div class="task-actions">
       ${piece ? `<a class="btn" href="#/piece/${esc(piece.id)}">Open commentary →</a>` : `<button class="btn primary" data-draftdev="${esc(d.id)}">Draft commentary →</button>`}
       <button class="btn" data-rmdev="${esc(d.id)}" style="font-size:11px">Remove</button>
@@ -606,11 +790,25 @@ function renderSettings() {
     </div>
     <div class="section-title">Data</div>
     <div class="card" style="max-width:520px">
-      <p class="locked-note" style="margin-bottom:10px">Your content lives in this browser (localStorage) and persists across reloads and app updates. Export a backup, or reset to a clean slate.</p>
+      <p class="locked-note" style="margin-bottom:10px">Your content lives in this browser (localStorage) and persists across reloads and app updates. It doesn't sync between browsers or devices — export a backup and import it on the other one.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" id="export">Export backup (JSON)</button>
+        <button class="btn" id="import">Import backup…</button>
         <button class="btn danger" id="reset">Reset all data</button>
       </div>
+      <input type="file" id="import-file" accept="application/json,.json" hidden />
+    </div>
+    <div class="section-title">Radar feed</div>
+    <div class="card" style="max-width:520px">
+      ${feed
+        ? `<p style="font-size:13px;margin-bottom:6px">Using the <strong>${esc(FEED_ORIGIN_LABEL[feed.origin] || 'feed')}</strong> — ${feed.items.length} items, updated <span class="num">${esc(stamp(feed.generatedAt))}</span>, ${feed.feeds.filter((f) => f.ok).length} of ${feed.feeds.length} sources OK.</p>`
+        : '<p style="font-size:13px;margin-bottom:6px">No feed loaded.</p>'}
+      <p class="locked-note" style="margin-bottom:10px">The scheduled refresh writes <code>public/feed.json</code> in the repo. Where the page can't read that file directly (e.g. this page hosted as an artifact), load a copy here; the newest available feed always wins.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="feed-load">Load feed file…</button>
+        ${storedFeed() ? '<button class="btn" id="feed-clear">Forget loaded file</button>' : ''}
+      </div>
+      <input type="file" id="feed-file" accept="application/json,.json" hidden />
     </div>
   `;
 }
@@ -636,7 +834,29 @@ document.addEventListener('input', (ev) => {
 // Track select moves a development between groups → re-render.
 document.addEventListener('change', (ev) => {
   const t = ev.target;
-  if (t.dataset.devtrack) { const d = state.developments.find((x) => x.id === t.dataset.devtrack); if (d) { d.track = t.value; save(); route(); } }
+  if (t.dataset.devtrack) { const d = state.developments.find((x) => x.id === t.dataset.devtrack); if (d) { d.track = t.value; save(); route(); } return; }
+  if (t.id === 'inbox-triaged') { inboxShowTriaged = t.checked; renderRadar(); return; }
+  if ((t.id === 'import-file' || t.id === 'feed-file') && t.files && t.files[0]) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(String(reader.result)); } catch { toast('That file isn\'t valid JSON.', true); return; }
+      if (t.id === 'feed-file') {
+        if (!validFeed(data)) { toast('That doesn\'t look like a feed.json snapshot.', true); return; }
+        try { localStorage.setItem(FEED_KEY, JSON.stringify(data)); } catch { toast('Couldn\'t store the feed in this browser.', true); return; }
+        feed = newestFeed(feed, { ...data, origin: 'file' });
+        updateRadarPill(); route();
+        toast(feed.origin === 'file' ? `Loaded ${data.items.length} feed items.` : 'Loaded — but a newer feed is already in use.');
+        return;
+      }
+      if (!data || typeof data !== 'object' || !Array.isArray(data.pieces)) { toast('That doesn\'t look like a Content Studio backup.', true); return; }
+      if (!confirm(`Replace everything in this browser with the backup (${data.pieces.length} pieces)? Export first if unsure.`)) return;
+      state = migrate(data); save(); updateRadarPill(); location.hash = '#/'; route();
+      toast('Backup imported.');
+    };
+    reader.readAsText(t.files[0]);
+    t.value = '';
+  }
 });
 
 document.addEventListener('click', (ev) => {
@@ -648,7 +868,15 @@ document.addEventListener('click', (ev) => {
     renderCalendar();
     return;
   }
-  const el = ev.target.closest('[data-new],[data-open],[data-advance],[data-scaffold],[data-delete],[data-addchan],[data-rmchan],[data-togglechan],[data-adddev],[data-draftdev],[data-rmdev],[data-addsrc],[data-rmsrc],#export,#reset');
+  const ib = ev.target.closest('[data-inbox],[data-inbox-track],[data-inbox-more],[data-inbox-health]');
+  if (ib) {
+    if (ib.dataset.inbox) triage(ib.dataset.id, ib.dataset.inbox);
+    else if (ib.dataset.inboxTrack) { inboxTrack = ib.dataset.inboxTrack; inboxLimit = 30; renderRadar(); }
+    else if (ib.hasAttribute('data-inbox-more')) { inboxLimit += 30; renderRadar(); }
+    else { inboxHealthOpen = !inboxHealthOpen; renderRadar(); }
+    return;
+  }
+  const el = ev.target.closest('[data-new],[data-open],[data-advance],[data-scaffold],[data-delete],[data-addchan],[data-rmchan],[data-togglechan],[data-adddev],[data-draftdev],[data-rmdev],[data-addsrc],[data-rmsrc],#export,#import,#reset,#feed-load,#feed-clear');
   if (!el) return;
 
   if (el.dataset.new) { const p = newPiece(el.dataset.new); location.hash = `#/piece/${p.id}`; return; }
@@ -679,13 +907,7 @@ document.addEventListener('click', (ev) => {
   if (el.dataset.rmsrc) { state.sources = state.sources.filter((s) => s.id !== el.dataset.rmsrc); save(); route(); return; }
   if (el.dataset.draftdev) {
     const d = state.developments.find((x) => x.id === el.dataset.draftdev);
-    if (d) {
-      const p = newPiece('commentary', { audience: d.audience, topic: d.category, track: d.track || 'regulatory', sourceDevelopmentId: d.id });
-      p.title = d.title ? `On: ${d.title}` : '';
-      p.angle = `What this means for ${AUDIENCE_LABEL[d.audience] || 'clients'}`;
-      d.relatedPieceId = p.id; d.status = 'commented'; save();
-      location.hash = `#/piece/${p.id}`;
-    }
+    if (d) location.hash = `#/piece/${draftCommentaryFrom(d).id}`;
     return;
   }
   if (el.dataset.rmdev) { state.developments = state.developments.filter((x) => x.id !== el.dataset.rmdev); save(); route(); return; }
@@ -694,6 +916,13 @@ document.addEventListener('click', (ev) => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'kitsune-content-studio-backup.json'; a.click();
     toast('Backup exported.'); return;
+  }
+  if (el.id === 'import') { document.getElementById('import-file').click(); return; }
+  if (el.id === 'feed-load') { document.getElementById('feed-file').click(); return; }
+  if (el.id === 'feed-clear') {
+    try { localStorage.removeItem(FEED_KEY); } catch { /* ignore */ }
+    if (feed?.origin === 'file') feed = validFeed(window.__KITSUNE_FEED__) ? { ...window.__KITSUNE_FEED__, origin: 'embedded' } : null;
+    updateRadarPill(); route(); toast('Forgot the loaded feed file.'); return;
   }
   if (el.id === 'reset') { if (confirm('Reset ALL Content Studio data in this browser? This cannot be undone.')) { state = freshState(); save(); location.hash = '#/'; route(); toast('Reset to a clean slate.'); } return; }
 });
@@ -707,6 +936,7 @@ function route() {
   const [, page, arg] = hash.split('/');
   const navKey = page === 'piece' ? '' : page || 'pipeline';
   for (const a of $nav.querySelectorAll('a')) a.classList.toggle('active', a.dataset.route === (page || 'pipeline'));
+  updateRadarPill();
   try {
     if (!page) renderPipeline();
     else if (page === 'piece') renderEditor(arg);
@@ -723,3 +953,4 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
+initFeed();
